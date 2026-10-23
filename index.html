@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantmap · Bản đồ thanh khoản mô phỏng</title>
+    <style>
+
+
+        :root {
+            --bg-color: #05070a;
+            --panel-bg: rgba(10, 15, 25, 0.85);
+            --border-color: rgba(42, 60, 80, 0.5);
+            --text-main: #e0e0e0;
+            --text-muted: #6b7c8f;
+            --neon-cyan: #00e5ff;
+            --neon-red: #ff2a55;
+            --neon-green: #00ffaa;
+            --neon-purple: #b026ff;
+            --neon-yellow: #ffea00;
+            --font-main: 'Inter', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-image: 
+                linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* HEADER */
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 20px; background: rgba(0,0,0,0.6);
+            border-bottom: 1px solid var(--border-color); z-index: 10; height: 60px;
+            backdrop-filter: blur(5px);
+        }
+        
+        .header-logo { font-size: 20px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 10px;}
+        .header-logo span { color: var(--neon-cyan); font-size: 12px; font-weight: 400; letter-spacing: 1px; }
+        
+        .header-stats { display: flex; gap: 25px; font-size: 13px; }
+        .header-stats div span { color: var(--neon-cyan); font-weight: 600; font-family: monospace; font-size: 14px;}
+        .blink { animation: blinker 0.5s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0.3; } }
+        
+        .speed-controls { display: flex; gap: 8px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 6px;}
+        .speed-btn {
+            background: transparent; border: none; color: var(--text-muted);
+            padding: 4px 12px; cursor: pointer; font-family: var(--font-main); font-weight: 600;
+            border-radius: 4px; transition: 0.2s;
+        }
+        .speed-btn:hover { color: #fff; }
+        .speed-btn.active { background: var(--neon-cyan); color: #000; box-shadow: 0 0 10px rgba(0, 229, 255, 0.4); }
+
+        /* MAIN LAYOUT */
+        .main-container { display: flex; flex: 1; position: relative; overflow: hidden; }
+
+        /* LEFT SIDEBAR (PIE CHART) */
+        .sidebar-left {
+            width: 280px; background: var(--panel-bg); border-right: 1px solid var(--border-color);
+            padding: 20px; z-index: 10; display: flex; flex-direction: column; gap: 20px;
+        }
+        .panel-title { font-size: 13px; color: var(--neon-cyan); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; font-weight: 700; text-shadow: 0 0 5px rgba(0,229,255,0.5); }
+        
+        .pie-container { position: relative; width: 100%; height: 220px; display: flex; justify-content: center; align-items: center; }
+        #pieChart { width: 100%; height: 100%; }
+        .pie-center-text {
+            position: absolute; text-align: center;
+            font-size: 22px; font-weight: bold; color: #fff; text-shadow: 0 0 10px var(--neon-cyan);
+        }
+        .pie-center-text small { display: block; font-size: 10px; color: var(--text-muted); font-weight: normal; letter-spacing: 1px; margin-top: 5px;}
+
+        .legend-list { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+        .legend-item { display: flex; justify-content: space-between; align-items: center; }
+        .legend-color { width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; display: inline-block; }
+        .legend-val { font-family: monospace; color: var(--neon-cyan); }
+        
+        /* CENTER MAP AREA */
+        .map-area { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        .world-map-bg {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 95%; height: 95%; object-fit: contain;
+            filter: invert(100%) sepia(100%) saturate(5000%) hue-rotate(160deg) brightness(70%) contrast(150%);
+            opacity: 0.4; pointer-events: none;
+        }
+        #arcCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; }
+        
+        /* RIGHT SIDEBAR (FLAGS) */
+        .sidebar-right {
+            width: 320px; background: var(--panel-bg); border-left: 1px solid var(--border-color);
+            padding: 20px; z-index: 10; display: flex; flex-direction: column; gap: 15px;
+        }
+        .flag-list-container {
+            flex: 1; overflow: hidden; position: relative;
+            mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+            -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+        }
+        .flag-list { display: flex; flex-direction: column; gap: 8px; transition: transform 0.3s ease-in-out; }
+        .flag-row {
+            display: flex; align-items: center; justify-content: space-between;
+            background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px;
+            border-left: 3px solid transparent; transition: 0.2s; font-size: 13px;
+        }
+        .flag-row:hover { background: rgba(0, 229, 255, 0.1); border-left-color: var(--neon-cyan); }
+        .flag-name { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+        .flag-icon { font-size: 20px; filter: drop-shadow(0 0 5px rgba(255,255,255,0.3)); }
+        .flag-volume { font-family: monospace; color: var(--neon-green); font-weight: bold; }
+        .flag-volume.down { color: var(--neon-red); }
+
+        /* BOTTOM CRYPTO TICKER */
+        .bottom-ticker-wrap {
+            height: 50px; background: #000; border-top: 1px solid var(--border-color);
+            position: relative; z-index: 10; display: flex; align-items: center; overflow: hidden;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.8);
+        }
+        .ticker-track {
+            display: flex; white-space: nowrap;
+            animation: tickerScroll 15s linear infinite;
+        }
+        .ticker-item {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 0 30px; font-size: 14px; font-family: monospace; font-weight: bold;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        .t-icon { font-size: 18px; }
+        .t-price { color: #fff; }
+        .t-change { font-size: 12px; padding: 2px 6px; border-radius: 4px; }
+        .t-up { color: #000; background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
+        .t-down { color: #fff; background: var(--neon-red); box-shadow: 0 0 10px var(--neon-red); }
+
+        @keyframes tickerScroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); } /* Vì nhân đôi dữ liệu để chạy liền mạch */
+        }
+
+    
+/* Presentation layer: original simulation IDs and public functions are preserved. */
+:root{--bg-color:#060c15;--panel-bg:rgba(13,23,38,.86);--border-color:#233348;--text-main:#e7effa;--text-muted:#a1b2c9;--font-main:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+body{height:auto;min-height:100vh;min-height:100dvh;overflow:auto;background-image:radial-gradient(ellipse at 50% 20%,#102b3d66,transparent 65%);font-size:14px}
+header{height:auto;min-height:90px;gap:24px;padding:20px 28px;background:#080f1bea;flex-wrap:wrap;flex-shrink:0}
+.header-logo{letter-spacing:-1px;font-size:25px;gap:12px}.brand-mark{display:grid;place-items:center;width:42px;height:42px;border:1px solid #35d9e577;border-radius:13px;background:#0c313e;color:#67e8f9;font-size:27px}.header-logo span{display:block;font-size:10px;letter-spacing:1.4px;margin-top:6px;color:var(--text-muted)}
+.header-stats{margin-left:auto;gap:24px;font-size:10px;letter-spacing:1px}.header-stats div span{display:block;margin-top:7px;font-size:18px;letter-spacing:0;font-variant-numeric:tabular-nums}.blink{animation:none}
+.speed-controls{padding:5px;border:1px solid var(--border-color);border-radius:12px}.speed-btn{min-height:40px;padding:8px 11px;border-radius:8px;font-size:12px}.speed-btn.active{background:#58e1ee;box-shadow:0 2px 12px #00e5ff20}
+.notice{display:flex;gap:12px;align-items:center;padding:12px 28px;color:#a8bdd2;font-size:12px;border-bottom:1px solid #1c2c40;background:#0b1523}.badge{white-space:nowrap;color:#f2ce83;border:1px solid #866c3c77;background:#302719;border-radius:6px;padding:5px 8px;font-size:10px;font-weight:700;letter-spacing:1px}
+.main-container{display:grid;grid-template-columns:250px minmax(0,1fr) 280px;gap:16px;overflow:visible;padding:20px 24px;min-height:590px;flex:1}
+.sidebar-left,.sidebar-right{width:auto;border:1px solid var(--border-color);border-radius:18px;padding:20px;gap:18px;min-width:0;background:linear-gradient(155deg,#101e30,#0a1422)}
+.panel-title{text-shadow:none;color:#bbccdf;letter-spacing:1.2px;font-size:11px;line-height:1.6;margin:0}.panel-kicker{color:#5be0ed;font:10px monospace;letter-spacing:2px;margin-bottom:8px}.pie-container{height:200px}.pie-center-text{font-size:23px;text-shadow:none}.pie-center-text small{font-size:9px}.legend-list{gap:0}.legend-item{padding:14px 0;border-bottom:1px solid #213249;font-size:11px;gap:8px}.legend-val{color:#e2edfc}.legend-color{border-radius:50%;width:7px;height:7px}.panel-note{font-size:11px;line-height:1.8;color:#94aac3}.session{margin-top:auto;border:1px solid #26394b;border-radius:12px;padding:14px;background:#0a121e}.session p{font-size:11px;line-height:1.7;color:#afbed0}.session progress{width:100%;height:5px;accent-color:#58e1ee;margin:12px 0}.session strong{font-size:11px;color:#67e8f9}
+.map-area{min-width:0;min-height:545px;display:block;border:1px solid #294154;border-radius:20px;background:radial-gradient(ellipse at center,#15374a88,transparent 75%),linear-gradient(#12304444 1px,transparent 1px),linear-gradient(90deg,#12304444 1px,transparent 1px);background-size:auto,36px 36px,36px 36px;isolation:isolate}
+.map-heading{position:absolute;top:24px;left:24px;right:24px;z-index:3;pointer-events:none}.map-heading h1{font-size:23px;letter-spacing:-.7px;font-weight:600;line-height:1.3}.map-heading p{font-size:11px;color:#94adc3;margin-top:9px;line-height:1.6}.map-heading .panel-kicker{color:#6ddbe7}.map-footer{position:absolute;bottom:18px;left:20px;right:20px;display:flex;gap:12px;justify-content:space-between;align-items:center;z-index:3;font-size:10px;color:#a6bbcf;pointer-events:none}.map-status{color:#75e6c4;border:1px solid #4dd9b133;border-radius:20px;padding:7px 10px;background:#0d2929}.world-map-bg{width:100%;height:100%;filter:none;opacity:.5}.flag-list-container{overflow:hidden;mask-image:none;-webkit-mask-image:none;min-height:400px}.flag-list{gap:8px}.flag-row{min-height:43px;padding:10px 8px;border:1px solid #22354a;border-radius:9px;font-size:11px;background:#12233877}.flag-icon{font-size:18px;filter:none}.flag-name{gap:6px}.flag-volume{font-size:11px;white-space:nowrap}.flag-row:hover{background:#1c3b4c;border-color:#3d7186}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 24px 18px}.control{font:inherit;font-size:12px;min-height:44px;border:1px solid #30465f;border-radius:10px;padding:10px 16px;background:#111f30;color:#caddf0;cursor:pointer;transition:background .2s,transform .2s}.control:hover{background:#1d354d;transform:translateY(-1px)}.control[aria-pressed=true]{color:#74e5ef;border-color:#50b9c8}.toolbar small{margin-left:auto;color:#94aac3;font-size:11px}.bottom-ticker-wrap{height:60px;flex-shrink:0;background:#0c1624;box-shadow:none}.ticker-track{animation-duration:50s}.ticker-item{font-size:12px;padding:0 22px;min-height:38px}.t-change{box-shadow:none;background:transparent}.t-up{color:#6de7bc}.t-down{color:#ff879c}.t-icon{font-size:13px}.bottom-ticker-wrap:hover .ticker-track,.paused .ticker-track,.gentle .ticker-track{animation-play-state:paused}
+footer{padding:14px 24px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:10px;color:#8ca4bf;letter-spacing:.5px;background:#080f19}
+button:focus-visible,a:focus-visible{outline:2px solid #6deaff;outline-offset:4px}.skip-link{position:fixed;top:-80px;left:16px;z-index:100;background:#68e6f3;color:#071320;padding:12px}.skip-link:focus{top:10px}.gentle *{transition:none!important;animation:none!important}
+@media(min-width:1600px){.main-container{grid-template-columns:280px minmax(0,1fr) 310px;min-height:680px}.map-area{min-height:620px}}
+@media(max-width:1180px){header{gap:16px}.header-stats{margin-left:0;flex:1;justify-content:flex-end}.speed-controls{margin-left:auto}.main-container{grid-template-columns:220px minmax(0,1fr)}.sidebar-right{grid-column:1/-1}.flag-list-container{min-height:0}.flag-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}.sidebar-right .panel-note{display:none}}
+@media(max-width:720px){header{padding:18px 16px;gap:18px}.header-logo{font-size:23px}.header-stats{order:3;flex-basis:100%;justify-content:space-between;gap:10px}.header-stats div span{font-size:15px}.header-stats{font-size:9px}.speed-controls{margin:0;flex:1;justify-content:space-between}.speed-btn{flex:1}.notice{padding:12px 16px;align-items:flex-start;font-size:11px;line-height:1.7}.main-container{padding:14px 12px;grid-template-columns:1fr;gap:14px}.map-area{grid-row:1;min-height:410px}.map-heading{top:20px;left:18px}.map-heading h1{font-size:22px}.sidebar-left{display:grid;grid-template-columns:minmax(110px,.8fr) minmax(0,1fr);padding:18px;gap:14px}.sidebar-left>.panel-title{grid-column:1/-1}.pie-container{height:170px}.legend-item{font-size:10px;padding:12px 0}.pie-center-text{font-size:20px}.session{grid-column:1/-1}.sidebar-left>.panel-note{grid-column:1/-1}.flag-list{grid-template-columns:repeat(2,minmax(0,1fr))}.sidebar-right{padding:18px}.flag-name{font-size:10px}.flag-volume{font-size:10px}.toolbar{padding:0 12px 14px;gap:8px}.toolbar small{margin:0;width:100%;line-height:1.8}.map-footer{font-size:9px;left:14px;right:14px}.map-footer>span:last-child{max-width:110px;text-align:right}footer{padding:14px 16px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Đến bản đồ mô phỏng</a>
+
+    <!-- HEADER -->
+    <header>
+        <div class="header-logo"><b class="brand-mark" aria-hidden="true">⌁</b><div>Quantmap<span>GLOBAL LIQUIDITY LAB</span></div></div>
+        <div class="header-stats">
+            <div>LỆNH/GIÂY: <span id="h-worlds" class="blink">0</span></div>
+            <div>TỔNG LỆNH: <span id="h-total-trades" style="color:var(--neon-red)">0 / 1.000.000</span></div>
+            <div>GIỜ MÔ PHỎNG: <span id="h-time">00:00:00</span></div>
+        </div>
+        <div class="speed-controls">
+            <button aria-pressed="true" class="speed-btn active" onclick="setSpeed(1, this)">1x</button>
+            <button aria-pressed="false" class="speed-btn" onclick="setSpeed(5, this)">5x</button>
+            <button aria-pressed="false" class="speed-btn" onclick="setSpeed(10, this)">10x</button>
+            <button aria-pressed="false" class="speed-btn" onclick="setSpeed(50, this)">50x</button>
+        </div>
+    </header>
+
+    <div class="notice"><span class="badge">MÔ PHỎNG</span><span>Toàn bộ giá, khối lượng và lệnh được tạo ngẫu nhiên. Không phải dữ liệu thị trường thực.</span></div>
+    <!-- MAIN CONTENT -->
+    <main class="main-container" id="main">
+        
+        <!-- LEFT SIDEBAR: PIE CHART -->
+        <div class="sidebar-left">
+            <div class="panel-title"><div class="panel-kicker">01 / PHÂN BỔ</div>TỶ LỆ LOẠI LỆNH</div>
+            <div class="pie-container">
+                <canvas id="pieChart" role="img" aria-label="Phân bổ bốn nhóm lệnh mô phỏng; tỷ lệ có trong chú giải bên dưới."></canvas>
+                <div class="pie-center-text" id="pie-center-val">0<small>LỆNH / GIÂY</small></div>
+            </div>
+            <div class="legend-list">
+                <div class="legend-item"><div><span class="legend-color" style="background: var(--neon-cyan);"></span>Mua Thị Trường</div> <span class="legend-val" id="leg-market">45%</span></div>
+                <div class="legend-item"><div><span class="legend-color" style="background: var(--neon-green);"></span>Bán Giới Hạn</div> <span class="legend-val" id="leg-limit">30%</span></div>
+                <div class="legend-item"><div><span class="legend-color" style="background: var(--neon-red);"></span>Cắt Lỗ (Stop)</div> <span class="legend-val" id="leg-stop">15%</span></div>
+                <div class="legend-item"><div><span class="legend-color" style="background: var(--neon-purple);"></span>Bot Chênh Lệch</div> <span class="legend-val" id="leg-arb">10%</span></div>
+            </div>
+            <div class="session"><p>TIẾN ĐỘ PHIÊN GIẢ LẬP</p><progress id="session-progress" max="1000000" value="0" aria-label="Tiến độ phiên giả lập"></progress><strong id="session-label">0% / 1 triệu lệnh</strong></div>
+            <p class="panel-note">Màu sắc phân biệt nhóm lệnh. Tỷ lệ và lưu lượng được tạo độc lập để minh họa.</p>
+        </div>
+
+        <!-- CENTER MAP -->
+        <div class="map-area">
+            <div class="map-heading"><div class="panel-kicker">KHÔNG GIAN DÒNG CHẢY</div><h1>Nhịp thanh khoản toàn cầu</h1><p>6 trung tâm kết nối · Những dòng chảy giả định</p></div>
+            <svg class="world-map-bg" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true"><g fill="#245067" stroke="#4c8198" stroke-width="1.2" stroke-linejoin="round">
+            <path d="M90 173L117 140 161 128 195 143 227 130 265 145 305 137 334 165 315 191 296 197 281 224 263 240 244 242 232 268 212 279 214 301 240 328 260 338 251 350 225 337 202 313 182 292 161 260 142 244 130 210 109 200Z"/>
+            <path d="M257 338L286 331 313 343 347 350 370 375 376 400 354 418 351 447 333 464 321 492 302 510 291 495 285 465 274 440 276 408 264 388 252 368Z"/>
+            <path d="M324 102L366 85 400 100 390 129 362 150 338 133Z"/>
+            <path d="M455 166L470 145 491 143 503 163 521 158 548 177 548 195 520 205 500 197 485 210 468 200 448 202 440 187Z"/>
+            <path d="M459 224L486 210 523 219 546 245 555 277 543 301 533 333 516 361 493 373 477 345 472 315 453 293 442 266 445 240Z"/>
+            <path d="M530 163L561 137 603 141 625 118 668 130 700 116 743 130 778 129 817 146 866 150 907 176 882 195 846 202 833 223 805 234 791 261 763 265 742 281 722 270 707 241 686 257 673 291 659 301 643 270 621 246 592 244 573 229 549 206Z"/>
+            <path d="M747 288L761 301 777 328 789 348 778 361 762 337Z M780 369L811 375 829 387 815 395 790 389Z M843 217L853 207 858 227 849 247 839 252Z"/>
+            <path d="M805 432L839 410 875 416 907 441 918 468 891 485 859 481 834 491 806 476 791 454Z M930 485L942 473 948 488 934 514 923 517Z M555 350L565 330 570 348 561 372 552 369Z"/>
+            </g></svg>
+            <canvas id="arcCanvas" role="img" aria-label="Các luồng giao dịch giả lập giữa sáu trung tâm tài chính; vị trí chỉ mang tính minh họa."></canvas>
+            <div class="map-footer"><span class="map-status" id="map-status">● Đang mô phỏng · 1x</span><span>Sơ đồ minh họa · Không theo tỷ lệ</span></div>
+        </div>
+
+        <!-- RIGHT SIDEBAR: FLAGS -->
+        <div class="sidebar-right">
+            <div class="panel-title"><div class="panel-kicker">02 / DÒNG TIỀN</div>QUỐC GIA &amp; VÙNG LÃNH THỔ</div>
+            <p class="panel-note">24 mục mẫu · 8 dòng luân phiên<br>Khối lượng giả định, đơn vị triệu USD.</p>
+            <div class="flag-list-container">
+                <div class="flag-list" id="flag-list">
+                    <!-- Cờ được render tự động bằng JS -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="toolbar" role="group" aria-label="Điều khiển mô phỏng"><button class="control" id="pause-btn" aria-pressed="false">Ⅱ Tạm dừng</button><button class="control" id="motion-btn" aria-pressed="false">Giảm chuyển động</button><small>Chọn 1x–50x để thay đổi nhịp mô phỏng. Có thể tạm dừng để quan sát số liệu.</small></div>
+    <!-- BOTTOM TICKER -->
+    <div class="bottom-ticker-wrap">
+        <div class="ticker-track" id="ticker-track">
+            <!-- Nội dung nhân đôi để chạy liền mạch -->
+        </div>
+    </div>
+
+    <footer><span>QUANTMAP / PHÒNG THÍ NGHIỆM TRỰC QUAN</span><span>Giá token giả định · Không kết nối sàn giao dịch</span></footer>
+    <script>
+        // --- BIẾN TOÀN CỤC ---
+        let speedMultiplier = 1;
+        let paused = false;
+        let gentleMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        function syncControls() {
+            document.body.classList.toggle('paused', paused);
+            document.body.classList.toggle('gentle', gentleMotion);
+            document.getElementById('pause-btn').textContent = paused ? '▶ Tiếp tục' : 'Ⅱ Tạm dừng';
+            document.getElementById('pause-btn').setAttribute('aria-pressed', String(paused));
+            document.getElementById('motion-btn').setAttribute('aria-pressed', String(gentleMotion));
+            document.getElementById('map-status').textContent = paused ? 'Ⅱ Đã tạm dừng' : `● Đang mô phỏng · ${speedMultiplier}x`;
+        }
+        document.getElementById('pause-btn').onclick = () => { paused = !paused; syncControls(); };
+        document.getElementById('motion-btn').onclick = () => { gentleMotion = !gentleMotion; arcs.length = 0; particles.length = 0; syncControls(); };
+        syncControls();
+        let totalTrades = 0;
+        const MAX_TRADES = 1000000;
+        let simTime = new Date();
+        simTime.setHours(0,0,0,0);
+
+        const hubs = [
+            { name: 'MỸ (NYSE)', x: 0.28, y: 0.38 },
+            { name: 'ANH (LSE)', x: 0.48, y: 0.28 },
+            { name: 'NHẬT (TSE)', x: 0.85, y: 0.35 },
+            { name: 'SINGAPORE (SGX)', x: 0.78, y: 0.60 },
+            { name: 'BRAZIL (B3)', x: 0.35, y: 0.70 },
+            { name: 'ÚC (ASX)', x: 0.88, y: 0.80 }
+        ];
+
+        const canvas = document.getElementById('arcCanvas');
+        const ctx = canvas.getContext('2d');
+        const pieCanvas = document.getElementById('pieChart');
+        const ctxPie = pieCanvas.getContext('2d');
+        
+        let arcs = [];
+        let particles = [];
+
+        // --- DỮ LIỆU QUỐC GIA (CỜ) ---
+        const allCountries = [
+            { flag: '🇺🇸', name: 'Hoa Kỳ' }, { flag: '🇬🇧', name: 'Anh' }, { flag: '🇯🇵', name: 'Nhật Bản' },
+            { flag: '🇸🇬', name: 'Singapore' }, { flag: '🇩🇪', name: 'Đức' }, { flag: '🇫🇷', name: 'Pháp' },
+            { flag: '🇨🇦', name: 'Canada' }, { flag: '🇦🇺', name: 'Úc' }, { flag: '🇨🇭', name: 'Thụy Sĩ' },
+            { flag: '🇭🇰', name: 'Hồng Kông' }, { flag: '🇰🇷', name: 'Hàn Quốc' }, { flag: '🇧🇷', name: 'Brazil' },
+            { flag: '🇮🇳', name: 'Ấn Độ' }, { flag: '🇷🇺', name: 'Nga' }, { flag: '🇿🇦', name: 'Nam Phi' },
+            { flag: '🇻🇳', name: 'Việt Nam' }, { flag: '🇹🇭', name: 'Thái Lan' }, { flag: '🇲🇾', name: 'Malaysia' },
+            { flag: '🇮🇩', name: 'Indonesia' }, { flag: '🇵🇭', name: 'Philippines' }, { flag: '🇦🇪', name: 'UAE' },
+            { flag: '🇸🇦', name: 'Ả Rập Xê Út' }, { flag: '🇹🇷', name: 'Thổ Nhĩ Kỳ' }, { flag: '🇲🇽', name: 'Mexico' }
+        ];
+        
+        // Khởi tạo danh sách cờ ngẫu nhiên ban đầu
+        let currentFlags = [];
+        function initFlags() {
+            currentFlags = [];
+            for(let i=0; i<8; i++) { // Hiển thị 8 dòng
+                const randomCountry = allCountries[Math.floor(Math.random() * allCountries.length)];
+                currentFlags.push({
+                    ...randomCountry,
+                    volume: getRandom(10, 100).toFixed(1) + 'M',
+                    isUp: Math.random() > 0.3
+                });
+            }
+            renderFlags();
+        }
+
+        function renderFlags() {
+            const container = document.getElementById('flag-list');
+            container.innerHTML = '';
+            currentFlags.forEach(c => {
+                container.innerHTML += `
+                    <div class="flag-row">
+                        <div class="flag-name">
+                            <span class="flag-icon">${c.flag}</span> ${c.name}
+                        </div>
+                        <div class="flag-volume ${c.isUp ? '' : 'down'}">${c.isUp ? '+' : '-'} $${c.volume}</div>
+                    </div>
+                `;
+            });
+        }
+
+        // Hàm xáo trộn cờ liên tục
+        function shuffleFlags() {
+            // Đẩy phần tử đầu xuống cuối và tạo mới phần tử cuối
+            currentFlags.shift();
+            const randomCountry = allCountries[Math.floor(Math.random() * allCountries.length)];
+            currentFlags.push({
+                ...randomCountry,
+                volume: getRandom(10, 200).toFixed(1) + 'M',
+                isUp: Math.random() > 0.3
+            });
+            
+            // Hiệu ứng trượt mượt mà
+            const list = document.getElementById('flag-list');
+            list.style.transform = gentleMotion || window.innerWidth <= 1180 ? 'none' : 'translateY(-40px)';
+            
+            setTimeout(() => {
+                list.style.transition = 'none';
+                list.style.transform = 'translateY(0)';
+                renderFlags();
+                // Buộc trình duyệt reflow
+                void list.offsetWidth; 
+                list.style.transition = 'transform 0.3s ease-in-out';
+            }, 300);
+        }
+
+        // --- DỮ LIỆU TICKER GIÁ TOKEN ---
+        const tokens = [
+            { sym: 'BTC', icon: '🟡', price: 65000 },
+            { sym: 'ETH', icon: '🔷', price: 3500 },
+            { sym: 'SOL', icon: '🟣', price: 150 },
+            { sym: 'BNB', icon: '🟡', price: 600 },
+            { sym: 'XRP', icon: '⚪', price: 0.5 },
+            { sym: 'DOGE', icon: '🐶', price: 0.15 },
+            { sym: 'ADA', icon: '🔵', price: 0.45 },
+            { sym: 'AVAX', icon: '🔺', price: 35 },
+            { sym: 'LINK', icon: '🔗', price: 15 },
+            { sym: 'DOT', icon: '⚫', price: 7 }
+        ];
+
+        function updateTicker() {
+            const track = document.getElementById('ticker-track');
+            let htmlContent = '';
+            
+            // Nhân đôi mảng để tạo vòng lặp vô tận
+            const displayTokens = tokens;
+
+            displayTokens.forEach(t => {
+                // Biến động giá ngẫu nhiên
+                const changePercent = getRandom(-5, 5);
+                const newPrice = t.price * (1 + changePercent / 100);
+                const isUp = changePercent >= 0;
+                
+                // Format giá
+                let priceStr = newPrice.toFixed(newPrice < 1 ? 4 : 2);
+                
+                htmlContent += `
+                    <div class="ticker-item">
+                        <span class="t-icon">${t.icon}</span>
+                        <span>${t.sym}/USDT</span>
+                        <span class="t-price">$${priceStr}</span>
+                        <span class="t-change ${isUp ? 't-up' : 't-down'}">
+                            ${isUp ? '▲' : '▼'} ${Math.abs(changePercent).toFixed(2)}%
+                        </span>
+                    </div>
+                `;
+            });
+            
+            track.innerHTML = htmlContent + htmlContent;
+        }
+
+        // --- VẼ BIỂU ĐỒ TRÒN (PIE CHART) ---
+        let pieData = [45, 30, 15, 10]; // Market, Limit, Stop, Arb
+        const pieColors = ['#00e5ff', '#00ffaa', '#ff2a55', '#b026ff'];
+
+        function drawPieChart() {
+            const w = pieCanvas.width;
+            const h = pieCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const radius = Math.min(w, h) / 2 - 10;
+            const innerRadius = radius * 0.6; // Tạo hình Donut
+
+            ctxPie.clearRect(0, 0, w, h);
+
+            let startAngle = -Math.PI / 2; // Bắt đầu từ 12h
+
+            for (let i = 0; i < pieData.length; i++) {
+                const sliceAngle = (pieData[i] / 100) * (Math.PI * 2);
+                
+                ctxPie.beginPath();
+                ctxPie.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+                ctxPie.arc(cx, cy, innerRadius, startAngle + sliceAngle, startAngle, true);
+                ctxPie.fillStyle = pieColors[i];
+                ctxPie.fill();
+                
+                // Vẽ viền đen mỏng giữa các phần
+                ctxPie.strokeStyle = '#05070a';
+                ctxPie.lineWidth = 2;
+                ctxPie.stroke();
+
+                startAngle += sliceAngle;
+            }
+        }
+
+        function updatePieData() {
+            // Biến động nhẹ tỷ lệ các loại lệnh
+            pieData[0] = Math.max(20, Math.min(60, pieData[0] + getRandom(-2, 2)));
+            pieData[1] = Math.max(20, Math.min(50, pieData[1] + getRandom(-2, 2)));
+            pieData[2] = Math.max(5, Math.min(30, pieData[2] + getRandom(-1, 1)));
+            // Phần còn lại dành cho Arb
+            const subtotal = pieData[0] + pieData[1] + pieData[2];
+            if (subtotal > 95) for (let i = 0; i < 3; i++) pieData[i] *= 95 / subtotal;
+            pieData[3] = 100 - (pieData[0] + pieData[1] + pieData[2]);
+
+            // Cập nhật text
+            document.getElementById('leg-market').innerText = Math.round(pieData[0]) + '%';
+            document.getElementById('leg-limit').innerText = Math.round(pieData[1]) + '%';
+            document.getElementById('leg-stop').innerText = Math.round(pieData[2]) + '%';
+            document.getElementById('leg-arb').innerText = Math.round(pieData[3]) + '%';
+            
+            drawPieChart();
+        }
+
+        // --- LOGIC MAP & FIREWORKS (GIỮ NGUYÊN BẢN ĐÃ NÂNG CẤP) ---
+        function getRandom(min, max) { return Math.random() * (max - min) + min; }
+        function setSpeed(speed, btn) {
+            speedMultiplier = speed;
+            document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.speed-btn').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+            syncControls();
+        }
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            pieCanvas.width = pieCanvas.parentElement.clientWidth;
+            pieCanvas.height = pieCanvas.parentElement.clientHeight;
+            drawPieChart();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function createExplosion(x, y, color) {
+            if (gentleMotion) return;
+            const particleCount = 15 + Math.floor(getRandom(0, 10));
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = getRandom(0.5, 4);
+                particles.push({
+                    x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                    life: 1, decay: getRandom(0.02, 0.05), color, size: getRandom(1, 3)
+                });
+            }
+        }
+
+        function spawnTraffic() {
+            if (gentleMotion) return;
+            const spawnCount = Math.floor(getRandom(1, 5) * (speedMultiplier > 10 ? 5 : speedMultiplier));
+            
+            for (let i = 0; i < spawnCount; i++) {
+                const targetHub = hubs[Math.floor(Math.random() * hubs.length)];
+                let startX, startY;
+                do {
+                    startX = getRandom(0.1, 0.9);
+                    startY = getRandom(0.2, 0.8);
+                } while (Math.hypot(startX - targetHub.x, startY - targetHub.y) < 0.2);
+
+                const type = Math.random();
+                let color = '#00e5ff';
+                if (type > 0.85) color = '#ff2a55'; // Stop
+                else if (type > 0.5) color = '#00ffaa'; // Arb
+                else if (type > 0.3) color = '#b026ff'; // Whale
+
+                arcs.push({
+                    startX, startY, endX: targetHub.x, endY: targetHub.y,
+                    progress: 0, speed: getRandom(0.005, 0.02) * speedMultiplier,
+                    color, trailLength: getRandom(0.2, 0.5) 
+                });
+            }
+        }
+
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // Draw Hubs
+            hubs.forEach(hub => {
+                const hx = hub.x * w;
+                const hy = hub.y * h;
+                const time = Date.now() / 1000;
+                const pulse = gentleMotion ? 0.15 : (time % 1.5) / 1.5; 
+                
+                ctx.beginPath();
+                ctx.arc(hx, hy, 5 + pulse * 30, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 229, 255, ${1 - pulse})`;
+                ctx.lineWidth = 1.5; ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(hx, hy, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff'; ctx.fill();
+
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.font = 'bold 10px Inter';
+                ctx.fillText(hub.name, Math.min(hx + 10, w - ctx.measureText(hub.name).width - 8), hy + 4);
+            });
+
+            // Draw Arcs
+            for (let i = arcs.length - 1; i >= 0; i--) {
+                const arc = arcs[i];
+                arc.progress += arc.speed;
+
+                if (arc.progress >= 1) {
+                    createExplosion(arc.endX * w, arc.endY * h, arc.color);
+                    arcs.splice(i, 1);
+                    continue;
+                }
+
+                const sx = arc.startX * w; const sy = arc.startY * h;
+                const ex = arc.endX * w; const ey = arc.endY * h;
+                const midX = (sx + ex) / 2;
+                const midY = Math.min(sy, ey) - Math.abs(sx - ex) * 0.4;
+
+                const t = arc.progress;
+                function getBezierPoint(tVal) {
+                    const x = Math.pow(1-tVal, 2) * sx + 2 * (1-tVal) * tVal * midX + Math.pow(tVal, 2) * ex;
+                    const y = Math.pow(1-tVal, 2) * sy + 2 * (1-tVal) * tVal * midY + Math.pow(tVal, 2) * ey;
+                    return { x, y };
+                }
+
+                // Vẽ đuôi dài
+                const trailSteps = 15; 
+                for (let step = 0; step < trailSteps; step++) {
+                    const t1 = t - (step / trailSteps) * arc.trailLength;
+                    const t2 = t - ((step + 1) / trailSteps) * arc.trailLength;
+                    if (t2 < 0) break;
+
+                    const p1 = getBezierPoint(t1);
+                    const p2 = getBezierPoint(t2);
+                    const alpha = 1 - (step / trailSteps);
+                    
+                    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+                    ctx.strokeStyle = arc.color; ctx.globalAlpha = alpha * 0.8;
+                    ctx.lineWidth = alpha * 3 + 0.5; ctx.lineCap = 'round'; ctx.stroke();
+                }
+
+                // Vẽ đầu đạn
+                const head = getBezierPoint(t);
+                ctx.globalAlpha = 1;
+                ctx.beginPath(); ctx.arc(head.x, head.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff'; ctx.shadowBlur = 15; ctx.shadowColor = arc.color; ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            // Draw Particles (Nổ)
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+                if (p.life <= 0) { particles.splice(i, 1); continue; }
+
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // --- VÒNG LẶP CHÍNH ---
+        let lastUpdate = 0;
+        let lastPieUpdate = 0;
+        let lastTickerUpdate = 0;
+        let lastFlagUpdate = 0;
+
+        function simulate(timestamp) {
+            if (paused || document.hidden) { requestAnimationFrame(simulate); return; }
+            document.getElementById('session-progress').value = totalTrades;
+            document.getElementById('session-label').textContent = `${(totalTrades / MAX_TRADES * 100).toFixed(1)}% / 1 triệu lệnh`;
+            drawMap(); // Vẽ map 60fps
+
+            // Cập nhật Logic (Tốc độ tùy chỉnh)
+            if (timestamp - lastUpdate > (1000 / speedMultiplier)) {
+                lastUpdate = timestamp;
+                
+                // Giả lập số lượng lệnh tăng vọt nếu speed cao
+                const newTrades = Math.floor(getRandom(100, 2000) * speedMultiplier);
+                totalTrades += newTrades;
+                if (totalTrades > MAX_TRADES) totalTrades = MAX_TRADES;
+
+                simTime.setSeconds(simTime.getSeconds() + 2);
+                document.getElementById('h-time').innerText = simTime.toTimeString().split(' ')[0];
+                document.getElementById('h-total-trades').innerText = `${totalTrades.toLocaleString('vi-VN')} / 1.000.000`;
+                
+                const tps = Math.floor(getRandom(1000, 15000) * speedMultiplier);
+                document.getElementById('h-worlds').innerText = tps.toLocaleString('vi-VN');
+                document.getElementById('pie-center-val').innerHTML = `${tps.toLocaleString('vi-VN')}<small>LỆNH / GIÂY</small>`;
+
+                spawnTraffic();
+            }
+
+            // Cập nhật Biểu đồ tròn (1s/lần)
+            if (timestamp - lastPieUpdate > 1000) {
+                lastPieUpdate = timestamp;
+                updatePieData();
+            }
+
+            // Cập nhật Ticker Giá (0.5s/lần để tạo cảm giác giật giật)
+            if (timestamp - lastTickerUpdate > 3000) {
+                lastTickerUpdate = timestamp;
+                updateTicker();
+            }
+
+            // Cập nhật Cờ Quốc gia (0.8s/lần)
+            if (timestamp - lastFlagUpdate > 3000) {
+                lastFlagUpdate = timestamp;
+                shuffleFlags();
+            }
+
+            requestAnimationFrame(simulate);
+        }
+
+        // Khởi tạo
+        window.onload = () => {
+            resizeCanvas();
+            initFlags();
+            updateTicker();
+            updatePieData();
+            requestAnimationFrame(simulate);
+        };
+    </script>
+</body>
+</html>
